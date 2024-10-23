@@ -19,7 +19,7 @@ force btn2 1 0
 view structure
 view signals
 
-run 50 us
+run 250 us
 
 view -undock wave
 wave zoomfull
