@@ -8,7 +8,7 @@ ENTITY UART_TX IS
           tx_valid : IN STD_LOGIC;
           tx_data : IN  STD_LOGIC_VECTOR (7 DOWNTO 0);
           tx_ready : OUT STD_LOGIC;
-          tx_OUT : OUT STD_LOGIC);
+          tx_OUT : OUT STD_LOGIC := '1');
 END UART_TX;
 
 ARCHITECTURE Behavior OF UART_TX IS
