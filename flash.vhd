@@ -3,25 +3,23 @@ USE IEEE.STD_LOGIC_1164.ALL;
 USE IEEE.NUMERIC_STD_UNSIGNED.ALL;
 
 ENTITY flash IS
---    GENERIC (STARTUP : STD_LOGIC_VECTOR (23 DOWNTO 0) := TO_STDLOGICVECTOR(10000000, 24));
-    GENERIC (STARTUP : STD_LOGIC_VECTOR (23 DOWNTO 0) := TO_STDLOGICVECTOR(1000, 24));
+--    GENERIC (STARTUP : STD_LOGIC_VECTOR (31 DOWNTO 0) := TO_STDLOGICVECTOR(10000000, 32));
+    GENERIC (STARTUP : STD_LOGIC_VECTOR (31 DOWNTO 0) := TO_STDLOGICVECTOR(100, 32));
     PORT(clk, MISO, button1, button2 : IN STD_LOGIC;
-         charAddr : IN STD_LOGIC_VECTOR (5 DOWNTO 0);
-         flashClk : OUT STD_LOGIC := '0';
-         MOSI : OUT STD_LOGIC := '0';
+         flashClk, MOSI : OUT STD_LOGIC := '0';
          CS : OUT STD_LOGIC := '1';
-         charOut : OUT STD_LOGIC_VECTOR (7 DOWNTO 0) := (OTHERS => '0')
+         charOut : OUT STD_LOGIC_VECTOR (7 DOWNTO 0) := (OTHERS => '0');
+         readAddr : OUT STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0')
         );
 END ENTITY;
 
-ARCHITECTURE behavior OF flash IS
+ARCHITECTURE Behavior OF flash IS
 TYPE state IS (INIT, LOADCMD, SEND, LOADADDR, READ, DONE);
-SIGNAL currentState, returnState : state;
+SIGNAL currentState, returnState : state := INIT;
 
 SIGNAL byteOut : STD_LOGIC_VECTOR (7 DOWNTO 0) := (OTHERS => '0');
 SIGNAL byteNum : INTEGER RANGE 0 TO 32;
 SIGNAL CMD : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"03";
-SIGNAL readAddr : STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
 SIGNAL dataIn : STD_LOGIC_VECTOR (255 DOWNTO 0) := (OTHERS => '0');
 SIGNAL dataInBuff : STD_LOGIC_VECTOR (255 DOWNTO 0) := (OTHERS => '0');
 
@@ -29,7 +27,7 @@ SIGNAL dataReady : STD_LOGIC := '0';
 SIGNAL bitsSend : STD_LOGIC_VECTOR (8 DOWNTO 0) := (OTHERS => '0');
 SIGNAL dataSend : STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
 
-SIGNAL counter : STD_LOGIC_VECTOR (24 DOWNTO 0) := (OTHERS => '0');
+SIGNAL counter : STD_LOGIC_VECTOR (32 DOWNTO 0) := (OTHERS => '0');
 
 BEGIN
     PROCESS(ALL)
@@ -41,6 +39,7 @@ BEGIN
                 byteOut <= (OTHERS => '0');
                 byteNum <= 0;
                 currentState <= LOADCMD;
+                dataReady <= '0';
             ELSE
                 counter <= counter + '1';
             END IF;
@@ -54,7 +53,7 @@ BEGIN
                 MOSI <= dataSend(23);
                 dataSend <= dataSend(22 DOWNTO 0) & '0';
                 bitsSend <= bitsSend - '1';
-                counter <= TO_STDLOGICVECTOR(1, 25);
+                counter <= TO_STDLOGICVECTOR(1, 33);
             ELSE
                 counter <= (OTHERS => '0');
                 flashClk <= '1';
@@ -70,7 +69,7 @@ BEGIN
             WHEN READ => IF counter(0) = '0' THEN
                 flashClk <= '0';
                 counter <= counter + '1';
-                IF counter(3 DOWNTO 0) = 0 AND counter > 0 THEN
+                IF counter(3 DOWNTO 0) = "0000" AND counter > "0" THEN
                     dataIn((byteNum * 8 + 7) DOWNTO (byteNum * 8)) <= byteOut;
                     byteNum <= byteNum + 1;
                     IF byteNum = 31 THEN
@@ -87,10 +86,10 @@ BEGIN
                 dataInBuff <= dataIn;
                 counter <= "0" & STARTUP;
                 IF button1 = '0' THEN
-                    readAddr <= readAddr + d"24";
+                    readAddr <= readAddr + TO_STDLOGICVECTOR(24, 24);
                     currentState <= INIT;
                 ELSIF button2 = '0' THEN
-                    readAddr <= readAddr - d"24";
+                    readAddr <= readAddr - TO_STDLOGICVECTOR(24, 24);
                     currentState <= INIT;
                 END IF;
             END CASE;
