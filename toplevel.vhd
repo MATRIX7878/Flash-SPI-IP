@@ -1,19 +1,20 @@
-LIBRARY IEEE;
+LIBRARY IEEE, WORK;
 USE IEEE.STD_LOGIC_1164.ALL;
 USE IEEE.NUMERIC_STD.ALL;
 USE IEEE.NUMERIC_STD_UNSIGNED.ALL;
+USE WORK.flashStates.ALL;
 
 ENTITY toplevel IS
-    PORT(clk, MISO, btn1, btn2, RST: IN STD_LOGIC;
+    PORT(clk, MISO, btn1, btn2, reset: IN STD_LOGIC;
          MOSI, CS, flashClk, TX : OUT STD_LOGIC
         );
 END ENTITY;
 
 ARCHITECTURE behavior OF toplevel IS
-TYPE state IS (IDLE, SENDADDR, ADDR, SENDDATA, DATA);
-SIGNAL currentState : state;
+TYPE MEM IS (IDLE, RSTEN, RST, RSTCLK, REMS, SFDP, UID, RDID, WREN, PP, CE, CECLK, SENDADDR, ADDR, SENDDATA, DATA);
+SIGNAL currentMem : MEM;
 
-TYPE LOC IS ARRAY (0 TO 5) OF STD_LOGIC_VECTOR (7 DOWNTO 0);
+TYPE LOC IS ARRAY (5 DOWNTO 0) OF STD_LOGIC_VECTOR (7 DOWNTO 0);
 SIGNAL place : LOC;
 
 CONSTANT CR : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"0D"; --Carriage Return
@@ -47,6 +48,16 @@ SIGNAL nibble : STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
 SIGNAL startData : STD_LOGIC_VECTOR (63 DOWNTO 0) := (OTHERS => '0');
 SIGNAL dataData : STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
 
+SIGNAL CMD : STD_LOGIC_VECTOR (7 DOWNTO 0) := (OTHERS => '0');
+SIGNAL currentState, returnState : state;
+
+SIGNAL flashAddr : STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
+SIGNAL charIn : STD_LOGIC_VECTOR (255 DOWNTO 0) := (OTHERS =>'0');
+
+SIGNAL counter : INTEGER RANGE 0 TO 2048;
+SIGNAL RSTcounter : INTEGER RANGE 0 TO 812 := 0;
+SIGNAL CEcounter : INTEGER RANGE 0 TO 323999999 := 0;
+
 COMPONENT UART_TX IS
     PORT (clk : IN  STD_LOGIC;
           reset : IN  STD_LOGIC;
@@ -60,10 +71,13 @@ COMPONENT flash IS
 --    GENERIC (STARTUP : STD_LOGIC_VECTOR (31 DOWNTO 0) := TO_STDLOGICVECTOR(10000000, 32));
     GENERIC (STARTUP : STD_LOGIC_VECTOR (31 DOWNTO 0) := TO_STDLOGICVECTOR(100, 32));
     PORT(clk, MISO, button1, button2 : IN STD_LOGIC;
+         CMD : IN STD_LOGIC_VECTOR (7 DOWNTO 0);
+         flashAddr : IN STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
+         charIn : IN STD_LOGIC_VECTOR (255 DOWNTO 0) := (OTHERS => '0');
+         currentState : IN state;
          flashClk, MOSI : OUT STD_LOGIC := '0';
          CS : OUT STD_LOGIC := '1';
-         charOut : OUT STD_LOGIC_VECTOR (7 DOWNTO 0) := (OTHERS => '0');
-         readAddr : OUT STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0')
+         charOut : OUT STD_LOGIC_VECTOR (7 DOWNTO 0) := (OTHERS => '0')
         );
 END COMPONENT;
 
@@ -97,22 +111,167 @@ BEGIN
     PROCESS(ALL)
     BEGIN
         IF RISING_EDGE(clk) THEN
-            CASE currentState IS
+            CASE currentMem IS
             WHEN IDLE => IF CS = '0' THEN
-                currentState <= SENDADDR;
+                currentMem <= RSTEN;
+            ELSE
+                currentState <= INIT;
             END IF;
+            WHEN RSTEN => CMD <= x"66";
+                currentState <= LOADCMD;
+                IF counter = 1 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 9 THEN
+                    currentState <= DONE;
+                    currentMem <= RST;
+                    counter <= 0;
+                ELSE
+                    counter <= counter + 1;
+                END IF;
+            WHEN RST => CMD <= x"99";
+                currentState <= LOADCMD;
+                IF counter = 1 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 9 THEN
+                    currentState <= DONE;
+                    currentMem <= RSTCLK;
+                    counter <= 0;
+                ELSE
+                    counter <= counter + 1;
+                END IF;
+            WHEN RSTCLK => IF RSTcounter = 812 THEN
+                currentMem <= REMS;
+            ELSE
+                RSTcounter <= RSTcounter + 1;
+            END IF;
+            WHEN REMS => CMD <= x"90";
+                flashAddr <= x"000001";
+                currentState <= LOADCMD;
+                IF counter = 1 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 9 THEN
+                    currentState <= LOADADDR;
+                    counter <= counter + 1;
+                ELSIF counter = 10 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 34 THEN
+                    currentState <= READ;
+                    counter <= counter + 1;
+                ELSIF counter = 58 THEN
+                    currentState <= DONE;
+                    currentMem <= SFDP;
+                    counter <= 0;
+                ELSE
+                    counter <= counter + 1;
+                END IF;
+            WHEN SFDP => CMD <= x"5A";
+                flashAddr <= x"000010";
+                charIn(255 DOWNTO 248) <= x"FF";
+                currentState <= LOADCMD;
+                IF counter = 1 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 9 THEN
+                    currentState <= LOADADDR;
+                    counter <= counter + 1;
+                ELSIF counter = 10 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 34 THEN
+                    currentState <= WRITE;
+                    counter <= counter + 1;
+                ELSIF counter = 42 THEN
+                    currentState <= READ;
+                    counter <= counter + 1;
+                ELSIF counter = 122 THEN
+                    currentState <= DONE;
+                    currentMem <= UID;
+                    counter <= 0;
+                ELSE
+                    counter <= counter + 1;
+                END IF;
+            WHEN UID => CMD <= x"4B";
+                charIn(255 DOWNTO 224) <= x"FFFFFFFF";
+                currentState <= LOADCMD;
+                IF counter = 1 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 9 THEN
+                    currentState <= WRITE;
+                    counter <= counter + 1;
+                ELSIF counter = 41 THEN
+                    currentState <= READ;
+                    counter <= counter + 1;
+                ELSIF counter = 169 THEN
+                    currentState <= DONE;
+                    currentMem <= RDID;
+                    counter <= 0;
+                ELSE
+                    counter <= counter + 1;
+                END IF;
+            WHEN RDID => CMD <= x"9F";
+                currentState <= LOADCMD;
+                IF counter = 1 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 9 THEN
+                    currentState <= READ;
+                    counter <= counter + 1;
+                ELSIF counter = 33 THEN
+                    currentState <= DONE;
+                    currentMem <= WREN;
+                    counter <= 0;
+                ELSE
+                    counter <= counter + 1;
+                END IF;
+            WHEN WREN => CMD <= x"06";
+                currentState <= LOADCMD;
+                IF counter = 1 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counTer = 9 THEN
+                    currentState <= DONE;
+                    currentMem <= CE;
+                    counter <= 0;
+                ELSE
+                    counter <= counter + 1;
+                END IF;
+            WHEN CE => CMD <= x"C7";
+                currentState <= LOADCMD;
+                IF counter = 1 THEN
+                    currentState <= SEND;
+                    counter <= counter + 1;
+                ELSIF counter = 9 THEN
+                    currentState <= DONE;
+                    currentMem <= CECLK;
+                    counter <= 0;
+                ELSE
+                    counter <= counter + 1;
+                END IF;
+            WHEN CECLK => IF CEcounter = 323999999 THEN
+                CEcounter <= 0;
+                currentMem <= PP;
+            ELSE
+                CEcounter <= CEcounter + 1;
+            END IF;
+            WHEN PP => CMD <= x"02";
+
             WHEN SENDADDR => startString <= "Addr: 0x";
                 startLogic <= STR2SLV(startString, startLogic);
                 tx_data <= BITSHIFT(tx_start);
-                FOR i IN 0 TO 5 LOOP
-                    place(i) <= nibble(3 * i + 3 DOWNTO 3 * i) + TO_STDLOGICVECTOR(48, 8) WHEN nibble(3 * i + 3 DOWNTO 3 * i) <= 9 ELSE nibble(3 * i + 3 DOWNTO 3 * i) + TO_STDLOGICVECTOR(55, 8);
+                FOR i IN 5 DOWNTO 0 LOOP
+                    place(i) <= nibble(4 * i + 3 DOWNTO 4 * i) + TO_STDLOGICVECTOR(48, 8) WHEN nibble(4 * i + 3 DOWNTO 4 * i) <= 9 ELSE nibble(4 * i + 3 DOWNTO 4 * i) + TO_STDLOGICVECTOR(55, 8);
                 END LOOP;
                 IF tx_valid = '1' AND tx_ready = '1' AND strCount < 7 THEN
                     strCount <= strCount + 1;
                 ELSIF tx_valid AND tx_ready THEN
                     tx_valid <= '0';
                     strCount <= 0;
-                    currentState <= ADDR;
+                    currentMem <= ADDR;
                 ELSIF NOT tx_valid THEN
                     tx_valid <= '1';
                 END IF;
@@ -126,7 +285,7 @@ BEGIN
                 ELSIF tx_valid AND tx_ready THEN
                     tx_valid <= '0';
                     addrCount <= 0;
-                    currentState <= SENDDATA;
+                    currentMem <= SENDDATA;
                 ELSIF NOT tx_valid THEN
                     tx_valid <= '1';
                 END IF;
@@ -138,7 +297,7 @@ BEGIN
                 ELSIF tx_valid AND tx_ready THEN
                     tx_valid <= '0';
                     strCount <= 0;
-                    currentState <= DATA;
+                    currentMem <= DATA;
                 ELSIF NOT tx_valid THEN
                     tx_valid <= '1';
                 END IF;
@@ -149,7 +308,7 @@ BEGIN
                 ELSIF tx_valid AND tx_ready THEN
                     tx_valid <= '0';
                     dataCount <= 0;
-                    currentState <= IDLE;
+                    currentMem <= IDLE;
                 ELSIF NOT tx_valid THEN
                     tx_valid <= '1';
                 END IF;
@@ -167,7 +326,7 @@ BEGIN
         END IF;
     END PROCESS;
 
-    uarttx : UART_TX PORT MAP (clk => clk, reset => RST, tx_valid => tx_valid, tx_data => tx_data, tx_ready => tx_ready, tx_OUT => TX);
-    memory : flash PORT MAP (clk => clk, MISO => MISO, button1 => btn1Reg, button2 => btn2Reg, flashClk => flashClk, MOSI => MOSI, CS => CS, charOut => charOut, readAddr => nibble);
+    uarttx : UART_TX PORT MAP (clk => clk, reset => reset, tx_valid => tx_valid, tx_data => tx_data, tx_ready => tx_ready, tx_OUT => TX);
+    memory : flash PORT MAP (clk => clk, MISO => MISO, button1 => btn1Reg, button2 => btn2Reg, CMD => CMD, flashAddr => flashAddr, charIn => charIn, currentState => currentState, flashClk => flashClk, MOSI => MOSI, CS => CS, charOut => charOut);
 
 END ARCHITECTURE;
