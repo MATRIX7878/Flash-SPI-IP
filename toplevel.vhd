@@ -5,8 +5,8 @@ USE IEEE.NUMERIC_STD_UNSIGNED.ALL;
 USE WORK.flashStates.ALL;
 
 ENTITY toplevel IS
-    PORT(clk, MISO, btn1, btn2, reset: IN STD_LOGIC;
-         MOSI, CS, flashClk, TX : OUT STD_LOGIC;
+    PORT(clk, MISO, reset: IN STD_LOGIC;
+         MOSI, CS, flashClk, TX, mirrorMISO, mirrorCLK, mirrorMOSI, mirrorCS : OUT STD_LOGIC;
          LEDS : OUT STD_LOGIC_VECTOR (5 DOWNTO 0)
         );
 END ENTITY;
@@ -25,8 +25,7 @@ CONSTANT ESC : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"1B"; --Escape
 CONSTANT SP : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"20"; --Space
 CONSTANT DEL  : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"7F"; --Delete
 
-SIGNAL btn1Reg : STD_LOGIC := '1';
-SIGNAL btn2Reg : STD_LOGIC := '1';
+SIGNAL flashReady : STD_LOGIC := '0';
 
 SIGNAL charOut : STD_LOGIC_VECTOR (7 DOWNTO 0);
 
@@ -44,8 +43,6 @@ SIGNAL strCount : INTEGER RANGE 0 TO 9 := 0;
 SIGNAL addrCount : INTEGER RANGE 0 TO 8 := 0;
 SIGNAL dataCount : INTEGER RANGE 0 TO 4 := 0;
 
-SIGNAL nibble : STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
-
 SIGNAL startData : STD_LOGIC_VECTOR (63 DOWNTO 0) := (OTHERS => '0');
 SIGNAL dataData : STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
 
@@ -58,7 +55,7 @@ SIGNAL charIn : STD_LOGIC_VECTOR (2047 DOWNTO 0) := (OTHERS =>'0');
 SIGNAL byteNum : INTEGER RANGE 0 TO 256;
 
 SIGNAL counter : INTEGER RANGE 0 TO 5000 := 0;
-SIGNAL RSTcounter : INTEGER RANGE 0 TO 812 := 0;
+SIGNAL RSTcounter : INTEGER RANGE 0 TO 811 := 0;
 SIGNAL CEcounter : INTEGER RANGE 0 TO 324000000 := 0;
 SIGNAL PPcounter : INTEGER RANGE 0 TO 10800 := 0;
 
@@ -79,7 +76,7 @@ COMPONENT flash IS
          charIn : IN STD_LOGIC_VECTOR (2047 DOWNTO 0) := (OTHERS => '0');
          currentState : IN state;
          byteNum : IN INTEGER RANGE 0 TO 256;
-         flashClk, MOSI : OUT STD_LOGIC := '0';
+         flashClk, MOSI, flashReady : OUT STD_LOGIC := '0';
          CS : OUT STD_LOGIC := '1';
          charOut : OUT STD_LOGIC_VECTOR (7 DOWNTO 0) := (OTHERS => '0')
         );
@@ -106,9 +103,11 @@ END FUNCTION;
 BEGIN
     PROCESS(ALL)
     BEGIN
-        IF FALLING_EDGE(clk) THEN
-            btn1Reg <= '1' WHEN btn1 ELSE '0';
-            btn2Reg <= '1' WHEN btn2 ELSE '0';
+        IF RISING_EDGE(clk) THEN
+            mirrorMISO <= MISO;
+            mirrorCLK <= flashClk;
+            mirrorMOSI <= MOSI;
+            mirrorCS <= CS;
         END IF;
     END PROCESS;
 
@@ -116,10 +115,11 @@ BEGIN
     BEGIN
         IF RISING_EDGE(clk) THEN
             CASE currentMem IS
-            WHEN IDLE => IF CS = '0' THEN
+            WHEN IDLE => IF flashReady = '1' THEN
                 currentMem <= RSTEN;
             ELSE
                 currentState <= INIT;
+                counter <= 0;
             END IF;
             WHEN RSTEN => CMD <= x"66";
                 IF counter = 0 THEN
@@ -149,7 +149,7 @@ BEGIN
                 ELSE
                     counter <= counter + 1;
                 END IF;
-            WHEN RSTCLK => IF RSTcounter = 812 THEN
+            WHEN RSTCLK => IF RSTcounter = 810 THEN
                 RSTcounter <= 0;
                 currentMem <= REMS;
             ELSE
@@ -183,6 +183,7 @@ BEGIN
             WHEN SFDP => CMD <= x"5A";
                 flashAddr <= x"000010";
                 charIn(2047 DOWNTO 2040) <= x"FF";
+                charIn(2039 DOWNTO 0) <= (OTHERS => '0');
                 IF counter = 0 THEN
                     currentState <= LOADCMD;
                     counter <= counter + 1;
@@ -214,6 +215,7 @@ BEGIN
                 END IF;
             WHEN UID => CMD <= x"4B";
                 charIn(2047 DOWNTO 2016) <= x"FFFFFFFF";
+                charIn(2015 DOWNTO 0) <= (OTHERS => '0');
                 IF counter = 0 THEN
                     currentState <= LOADCMD;
                     counter <= counter + 1;
@@ -279,10 +281,9 @@ BEGIN
                 END IF;
             WHEN CECLK => IF CEcounter = 323999999 THEN
                 CEcounter <= 0;
-                LEDS <= (OTHERS => '1');
                 currentMem <= PP;
-            ELSE
                 LEDS <= (OTHERS => '0');
+            ELSE
                 CEcounter <= CEcounter + 1;
             END IF;
             WHEN PP => CMD <= x"02";
@@ -346,9 +347,6 @@ BEGIN
             WHEN SENDADDR => startString <= "Addr: 0x";
                 startLogic <= STR2SLV(startString, startLogic);
                 tx_data <= BITSHIFT(tx_start);
-                FOR i IN 5 DOWNTO 0 LOOP
-                    place(i) <= nibble(4 * i + 3 DOWNTO 4 * i) + TO_STDLOGICVECTOR(48, 8) WHEN nibble(4 * i + 3 DOWNTO 4 * i) <= 9 ELSE nibble(4 * i + 3 DOWNTO 4 * i) + TO_STDLOGICVECTOR(55, 8);
-                END LOOP;
                 IF tx_valid = '1' AND tx_ready = '1' AND strCount < 7 THEN
                     strCount <= strCount + 1;
                 ELSIF tx_valid AND tx_ready THEN
@@ -399,17 +397,17 @@ BEGIN
         END IF;
     END PROCESS;
 
-    PROCESS(ALL)
-    BEGIN
-        IF RISING_EDGE(clk) THEN
-            tx_str <= dataLogic(47 - strCount * 8 DOWNTO 40 - strCount * 8);
-            tx_start <= startLogic(63 - strCount * 8 DOWNTO 56 - strCount * 8);
-            tx_addr <= startData(63 - addrCount * 8 DOWNTO 56 - addrCount * 8);
-            tx_value <= dataData(23 - dataCount * 8 DOWNTO 16 - dataCount * 8);
-        END IF;
-    END PROCESS;
+--    PROCESS(ALL)
+--    BEGIN
+--        IF RISING_EDGE(clk) THEN
+--            tx_str <= dataLogic(47 - strCount * 8 DOWNTO 40 - strCount * 8);
+--            tx_start <= startLogic(63 - strCount * 8 DOWNTO 56 - strCount * 8);
+--            tx_addr <= startData(63 - addrCount * 8 DOWNTO 56 - addrCount * 8);
+--            tx_value <= dataData(23 - dataCount * 8 DOWNTO 16 - dataCount * 8);
+--        END IF;
+--    END PROCESS;
 
     uarttx : UART_TX PORT MAP (clk => clk, reset => reset, tx_valid => tx_valid, tx_data => tx_data, tx_ready => tx_ready, tx_OUT => TX);
-    memory : flash PORT MAP (clk => clk, MISO => MISO, CMD => CMD, flashAddr => flashAddr, charIn => charIn, currentState => currentState, byteNum => byteNum, flashClk => flashClk, MOSI => MOSI, CS => CS, charOut => charOut);
+    memory : flash GENERIC MAP (STARTUP => TO_STDLOGICVECTOR(10000000, 32)) PORT MAP (clk => clk, MISO => MISO, CMD => CMD, flashAddr => flashAddr, charIn => charIn, currentState => currentState, byteNum => byteNum, flashClk => flashClk, MOSI => MOSI, flashReady => flashReady, CS => CS, charOut => charOut);
 
 END ARCHITECTURE;
