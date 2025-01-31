@@ -70,6 +70,7 @@ END COMPONENT;
 
 COMPONENT flash IS
     GENERIC (STARTUP : STD_LOGIC_VECTOR (31 DOWNTO 0) := TO_STDLOGICVECTOR(10000000, 32));
+-- GENERIC (STARTUP : STD_LOGIC_VECTOR (31 DOWNTO 0) := TO_STDLOGICVECTOR(10, 32)); For simulation
     PORT(clk, MISO : IN STD_LOGIC;
          CMD : IN STD_LOGIC_VECTOR (7 DOWNTO 0);
          flashAddr : IN STD_LOGIC_VECTOR (23 DOWNTO 0) := (OTHERS => '0');
@@ -409,5 +410,6 @@ BEGIN
 
     uarttx : UART_TX PORT MAP (clk => clk, reset => reset, tx_valid => tx_valid, tx_data => tx_data, tx_ready => tx_ready, tx_OUT => TX);
     memory : flash GENERIC MAP (STARTUP => TO_STDLOGICVECTOR(10000000, 32)) PORT MAP (clk => clk, MISO => MISO, CMD => CMD, flashAddr => flashAddr, charIn => charIn, currentState => currentState, byteNum => byteNum, flashClk => flashClk, MOSI => MOSI, flashReady => flashReady, CS => CS, charOut => charOut);
+-- memory : flash GENERIC MAP (STARTUP => TO_STDLOGICVECTOR(10, 32)) PORT MAP (clk => clk, MISO => MISO, CMD => CMD, flashAddr => flashAddr, charIn => charIn, currentState => currentState, byteNum => byteNum, flashClk => flashClk, MOSI => MOSI, flashReady => flashReady, CS => CS, charOut => charOut);
 
 END ARCHITECTURE;
