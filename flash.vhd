@@ -58,6 +58,7 @@ BEGIN
             END IF;
             WHEN DONE => CS <= '1';
                 flashClk <= '0';
+                MOSI <= '0';
                 counter <= "0" & STARTUP;
             END CASE;
         END IF;
