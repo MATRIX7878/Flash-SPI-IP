@@ -12,7 +12,7 @@ ENTITY top IS
 END ENTITY;
 
 ARCHITECTURE behavior OF top IS
-TYPE MEMORY IS (IDLE, CRLF, RSTEN, RST, RSTCLK, REMS, SENDMID, MID, SENDDID, DID, SFDP, SENDSFDP, PRINTSFDP, UID, SENDUID, PRINTUID, RDID, SENDMEM, MEM, SENDCAP, CAP, WREN, CE, CECLK, PP, PPCLK, FR, SENDADDR, ADDR, SENDDATA, DATA);
+TYPE MEMORY IS (IDLE, CRLF, RSTEN, RST, RSTCLK, REMS, SENDMID, MID, SENDDID, DID, SFDP, SENDSFDP, PRINTSFDP, UID, SENDUID, PRINTUID, RDID, SENDMEM, MEM, SENDCAP, CAP, WREN, CE, CECLK, PP, PPCLK, FR, SENDADDR, ADDR, SENDDATA, DATA, DONE);
 SIGNAL currentMem, returnMem : MEMORY := IDLE;
 
 CONSTANT CR : STD_LOGIC_VECTOR (7 DOWNTO 0) := x"0D"; --Carriage Return
@@ -181,16 +181,16 @@ BEGIN
                 ELSIF counter = 1 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 17 THEN
+                ELSIF counter = 18 THEN
                     currentState <= LOADADDR;
                     counter <= counter + 1;
-                ELSIF counter = 18 THEN
+                ELSIF counter = 19 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 66 THEN
+                ELSIF counter = 68 THEN
                     currentState <= READ;
                     counter <= counter + 1;
-                ELSIF counter = 98 THEN
+                ELSIF counter = 100 THEN
                     currentState <= DONE;
                     currentMem <= SENDMID;
                     returnMem <= SENDDID;
@@ -264,10 +264,10 @@ BEGIN
                 ELSIF counter = 1 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 17 THEN
+                ELSIF counter = 18 THEN
                     currentState <= LOADADDR;
                     counter <= counter + 1;
-                ELSIF counter = 18 THEN
+                ELSIF counter = 19 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
                 ELSIF counter = 66 THEN
@@ -276,10 +276,10 @@ BEGIN
                 ELSIF counter = 67 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 83 THEN
+                ELSIF counter = 84 THEN
                     currentState <= READ;
                     counter <= counter + 1;
-                ELSIF counter = 4179 THEN
+                ELSIF counter = 4181 THEN
                     currentState <= DONE;
                     currentMem <= SENDSFDP;
                     counter <= 0;
@@ -336,10 +336,10 @@ BEGIN
                 ELSIF counter = 18 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 82 THEN
+                ELSIF counter = 84 THEN
                     currentState <= READ;
                     counter <= counter + 1;
-                ELSIF counter = 338 THEN
+                ELSIF counter = 340 THEN
                     currentState <= DONE;
                     currentMem <= SENDUID;
                     counter <= 0;
@@ -388,10 +388,10 @@ BEGIN
                 ELSIF counter = 1 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 17 THEN
+                ELSIF counter = 18 THEN
                     currentState <= READ;
                     counter <= counter + 1;
-                ELSIF counter = 65 THEN
+                ELSIF counter = 67 THEN
                     currentState <= DONE;
                     currentMem <= SENDMID;
                     returnMem <= SENDMEM;
@@ -455,7 +455,7 @@ BEGIN
                 ELSIF counter = 1 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 17 THEN
+                ELSIF counter = 18 THEN
                     currentState <= DONE;
                     currentMem <= returnMem;
                     counter <= 0;
@@ -469,7 +469,7 @@ BEGIN
                 ELSIF counter = 1 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 17 THEN
+                ELSIF counter = 18 THEN
                     currentState <= DONE;
                     currentMem <= CECLK;
                     counter <= 0;
@@ -477,6 +477,7 @@ BEGIN
                     counter <= counter + 1;
                 END IF;
             WHEN CECLK => IF counter = 323999999 THEN
+--            WHEN CECLK => IF counter = 32 THEN
                 counter <= 0;
                 LEDS <= (OTHERS => '1');
                 currentMem <= WREN;
@@ -495,10 +496,10 @@ BEGIN
                 ELSIF counter = 1 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 17 THEN
+                ELSIF counter = 18 THEN
                     currentState <= LOADADDR;
                     counter <= counter + 1;
-                ELSIF counter = 18 THEN
+                ELSIF counter = 19 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
                 ELSIF counter = 66 THEN
@@ -531,10 +532,10 @@ BEGIN
                 ELSIF counter = 1 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 17 THEN
+                ELSIF counter = 18 THEN
                     currentState <= LOADADDR;
                     counter <= counter + 1;
-                ELSIF counter = 18 THEN
+                ELSIF counter = 19 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
                 ELSIF counter = 66 THEN
@@ -543,10 +544,10 @@ BEGIN
                 ELSIF counter = 67 THEN
                     currentState <= SEND;
                     counter <= counter + 1;
-                ELSIF counter = 83 THEN
+                ELSIF counter = 84 THEN
                     currentState <= READ;
                     counter <= counter + 1;
-                ELSIF counter = 83 + byteNum * 16 THEN
+                ELSIF counter = 84 + byteNum * 16 THEN
                     counter <= 0;
                     currentMem <= SENDADDR;
                     currentState <= DONE;
@@ -611,7 +612,7 @@ BEGIN
                     counter <= 0;
                     IF dataCounter = byteNum THEN
                         dataCounter <= 1;
-                        currentMem <= IDLE;
+                        currentMem <= DONE;
                     ELSIF dataCounter < byteNum THEN
                         char <= storedData(47 DOWNTO 40);
                         storedData(47 DOWNTO 0) <= storedData(39 DOWNTO 0) & x"00";
@@ -621,6 +622,7 @@ BEGIN
                 ELSIF NOT tx_valid THEN
                     tx_valid <= '1';
                 END IF;
+            WHEN DONE =>
             END CASE;
         END IF;
     END PROCESS;
@@ -882,7 +884,7 @@ BEGIN
                 END IF;
             END IF;
 
-            IF currentMem = ADDR THEN
+            IF currentMem = ADDR OR currentMem = DATA THEN
                 IF counter = 1 THEN
                     tx_str <= FLASHDATA(7 DOWNTO 0);
                 ELSIF counter = 0 THEN
@@ -895,5 +897,5 @@ BEGIN
     to_hex : conv PORT MAP (clk => clk, char => char, hexLow => hexLow, hexHigh => hexHigh);
     uart_tx : UARTTX PORT MAP (clk => clk, reset => reset, tx_valid => tx_valid, tx_data => tx_data, tx_ready => tx_ready, tx_OUT => TX);
     storage : flash GENERIC MAP (STARTUP => TO_STDLOGICVECTOR(10000000, 32)) PORT MAP (clk => clk, MISO => MISO, CMD => CMD, flashAddr => flashAddr, charIn => charIn, currentState => currentState, flashClk => flashClk, MOSI => MOSI, flashReady => flashReady, CS => CS, charOut => charOut);
---    memory : flash GENERIC MAP (STARTUP => TO_STDLOGICVECTOR(10, 32)) PORT MAP (clk => clk, MISO => MISO, CMD => CMD, flashAddr => flashAddr, charIn => charIn, currentState => currentState, flashClk => flashClk, MOSI => MOSI, flashReady => flashReady, CS => CS, charOut => charOut);
+--    storage : flash GENERIC MAP (STARTUP => TO_STDLOGICVECTOR(10, 32)) PORT MAP (clk => clk, MISO => MISO, CMD => CMD, flashAddr => flashAddr, charIn => charIn, currentState => currentState, flashClk => flashClk, MOSI => MOSI, flashReady => flashReady, CS => CS, charOut => charOut);
 END ARCHITECTURE;
